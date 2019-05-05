@@ -1,24 +1,27 @@
-// simple AJAX API call
-const url='http://127.0.0.1:8888/';
-let failCount=0;
-let authToken;
-let complete=0;
+// Retrieve NOCList, output JSON object with user numbers
+
+// global constants
+const url = 'http://127.0.0.1:8888';
+const authPath = '/auth';
+const userPath = '/users';
+const maxFailAttempts = 3;
+
+// global variables
+let failCount = 0;
+let authorizationToken;
 
 const requestAuthorizationToken = () => {
 
-console.log("requestAuthorizationToken");
-const authUrl = url + "auth";
-
+const authUrl = url + authPath;
 let request = new XMLHttpRequest();
-request.open("GET",authUrl);
+request.open("GET", authUrl);
 request.send();
 
     request.onreadystatechange = () => {
-        if (request.readyState==4) {
-            if (request.status==200) {
-                failCount=0;
-                authToken=request.responseText;
-                console.log("setting authToken: "+authToken);
+        if (request.readyState == 4) {
+            if (request.status == 200) {
+                failCount = 0;
+                authorizationToken = request.responseText;
             }
             else {
               ++failCount;
@@ -30,35 +33,32 @@ request.send();
 
 const requestUserList = () => {
 
-let string=authToken+"/users";
-let bitArray=sjcl.hash.sha256.hash(string);
-let digestSHA256=sjcl.codec.hex.fromBits(bitArray);  
+let completeToken = authorizationToken + userPath;
+let bitArray = sjcl.hash.sha256.hash(completeToken);
+let digestSHA256 = sjcl.codec.hex.fromBits(bitArray);  
 
 let request = new XMLHttpRequest();
-const userUrl = url + "users";
-request.open("GET",userUrl);
+const userUrl = url + userPath;
+request.open("GET", userUrl);
 request.setRequestHeader("X-Request-Checksum",digestSHA256);
-try
-{
 request.send();
-} catch (err) {
-    console.log(err);
-    console.log("AH!");
-}
 
     request.onreadystatechange = function() {
-        if (this.readyState==4 && this.status==201) {
-            failCount=0;
-            complete=1;
-            console.log(request.responseText);
-            console.log(JSON.stringify(request.responseText.split(`\n`)));
+        if (this.readyState == 4) {
+            if (this.status == 201) {
+                failCount = 0;
+                console.log(JSON.stringify(request.responseText.split(`\n`)));
+            } else {
+                ++failCount;
+            }
+            main();
         }
     }
 }
  
 const main = () => {
-    if (failCount<3) {
-       authToken ? requestUserList() : requestAuthorizationToken(); 
+    if (failCount < maxFailAttempts) {
+       authorizationToken ? requestUserList() : requestAuthorizationToken(); 
     } else {
        exit(1);
     }
