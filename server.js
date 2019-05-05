@@ -5,7 +5,6 @@ var crypto = require('crypto');
 var XMLHttpRequest = require('xmlhttprequest').XMLHttpRequest;
 var constant = require('./constants.js');
 
-// global variables
 let failCount = 0;
 let authorizationToken;
 
@@ -20,7 +19,7 @@ request.send();
         if (request.readyState == 4) {
             if (request.status == 200) {
                 failCount = 0;
-                authorizationToken = request.getResponseHeader(constant.requestTokenHeader);
+                authorizationToken = request.getResponseHeader(constant.badsecTokenHeader);
             }
             else {
                 console.error('Authorization call failed with status: '+this.status);
@@ -38,13 +37,12 @@ let digestSha256 = crypto.createHash(`sha256`).update(authorizationToken + const
 let request = new XMLHttpRequest();
 const userUrl = constant.url + constant.userPath;
 request.open("GET", userUrl);
-request.setRequestHeader(constant.responseTokenHeader,digestSha256);
+request.setRequestHeader(constant.checksumTokenHeader,digestSha256);
 request.send();
 
     request.onreadystatechange = function() {
         if (this.readyState == 4) {
             if (this.status == 200) {
-                failCount = 0;
                 console.log(JSON.stringify(request.responseText.split(`\n`)));
                 process.exit(0);
             } else {
@@ -57,11 +55,10 @@ request.send();
 }
  
 const main = () => {
-    console.log(constant.maxFailAttempts);
     if (failCount < constant.maxFailAttempts) {
        authorizationToken ? requestUserList() : requestAuthorizationToken(); 
     } else {
-       console.error('Reached max failed attempt.');
+       console.error('Reached max failed attempts.');
        process.exit(1);
     }
 }
