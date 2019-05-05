@@ -3,13 +3,7 @@
 var express = require('express');
 var crypto = require('crypto');
 var XMLHttpRequest = require('xmlhttprequest').XMLHttpRequest;
-//var sjcl = require('./sjcl.js');
-
-// global constants
-const url = 'http://127.0.0.1:8888';
-const authPath = '/auth';
-const userPath = '/users';
-const maxFailAttempts = 3;
+var constant = require('./constants.js');
 
 // global variables
 let failCount = 0;
@@ -17,8 +11,7 @@ let authorizationToken;
 
 const requestAuthorizationToken = () => {
 
-console.log('requestAuthorizationToken');
-const authUrl = url + authPath;
+const authUrl = constant.url + constant.authPath;
 let request = new XMLHttpRequest();
 request.open("GET", authUrl);
 request.send();
@@ -27,8 +20,7 @@ request.send();
         if (request.readyState == 4) {
             if (request.status == 200) {
                 failCount = 0;
-                authorizationToken = request.responseText;
-                console.log('authorizationToken: '+authorizationToken);
+                authorizationToken = request.getResponseHeader(constant.requestTokenHeader);
             }
             else {
                 console.error('Authorization call failed with status: '+this.status);
@@ -41,26 +33,20 @@ request.send();
 
 const requestUserList = () => {
 
-console.log('requestUserList');
-let completeToken = authorizationToken + userPath;
-console.log('completeToken: '+completeToken);
-let digestSha256 = crypto.createHash(`sha256`).update(authorizationToken + userPath).digest(`hex`);
-
-//let bitArray = sjcl.hash.sha256.hash(completeToken);
-//let digestSha256 = sjcl.codec.hex.fromBits(bitArray);  
-console.log('digestSha256: '+digestSha256);
+let digestSha256 = crypto.createHash(`sha256`).update(authorizationToken + constant.userPath).digest(`hex`);
 
 let request = new XMLHttpRequest();
-const userUrl = url + userPath;
+const userUrl = constant.url + constant.userPath;
 request.open("GET", userUrl);
-request.setRequestHeader("X-Request-Checksum",digestSha256);
+request.setRequestHeader(constant.responseTokenHeader,digestSha256);
 request.send();
 
     request.onreadystatechange = function() {
         if (this.readyState == 4) {
-            if (this.status == 201) {
+            if (this.status == 200) {
                 failCount = 0;
                 console.log(JSON.stringify(request.responseText.split(`\n`)));
+                process.exit(0);
             } else {
                 ++failCount;
                 console.error('User call failed with status: '+this.status);
@@ -71,8 +57,8 @@ request.send();
 }
  
 const main = () => {
-    console.log('calling main');
-    if (failCount < maxFailAttempts) {
+    console.log(constant.maxFailAttempts);
+    if (failCount < constant.maxFailAttempts) {
        authorizationToken ? requestUserList() : requestAuthorizationToken(); 
     } else {
        console.error('Reached max failed attempt.');
@@ -83,5 +69,4 @@ const main = () => {
 var app = express();
 app.listen(5000,function () {
      main();
-     console.log('Server is listening on port 3000.');
 });
