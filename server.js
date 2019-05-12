@@ -5,65 +5,49 @@ var crypto = require('crypto');
 var XMLHttpRequest = require('xmlhttprequest').XMLHttpRequest;
 var constant = require('./constants.js');
 
-let failCount = 0;
-let authorizationToken;
-
-const requestAuthorizationToken = () => {
-
-const authUrl = constant.url + constant.authPath;
-let request = new XMLHttpRequest();
-request.open("GET", authUrl);
-request.send();
-
-    request.onreadystatechange = () => {
-        if (request.readyState == 4) {
-            if (request.status == 200) {
-                failCount = 0;
-                authorizationToken = request.getResponseHeader(constant.badsecTokenHeader);
-            }
-            else {
-                console.error('Authorization call failed with status: '+this.status);
-              ++failCount;
-            }
-            main();
-        }
-    }
+const sendRequest = (path, headers) => {
+  let url = constant.url + path;
+  return recurMakeRequest(url, headers, 0)
 }
 
-const requestUserList = () => {
+const recurMakeRequest = (url, headers, failCount) => {
+  if (failCount == constant.maxFailAttempts) {
+    return false;
+  }
 
-let digestSha256 = crypto.createHash(`sha256`).update(authorizationToken + constant.userPath).digest(`hex`);
+  let request = new XMLHttpRequest();
+  request.open("GET", url, false);
 
-let request = new XMLHttpRequest();
-const userUrl = constant.url + constant.userPath;
-request.open("GET", userUrl);
-request.setRequestHeader(constant.checksumTokenHeader,digestSha256);
-request.send();
+  Object.entries(headers).forEach(([key, value]) => {
+    request.setRequestHeader(key, value);
+  });
 
-    request.onreadystatechange = function() {
-        if (this.readyState == 4) {
-            if (this.status == 200) {
-                console.log(JSON.stringify(request.responseText.split(`\n`)));
-                process.exit(0);
-            } else {
-                ++failCount;
-                console.error('User call failed with status: '+this.status);
-            }
-            main();
-        }
-    }
+  request.send();
+  if (request.status == 200) {
+    return request;
+  }
+  recurMakeRequest(url, ++failCount);
 }
- 
+
 const main = () => {
-    if (failCount < constant.maxFailAttempts) {
-       authorizationToken ? requestUserList() : requestAuthorizationToken(); 
-    } else {
-       console.error('Reached max failed attempts.');
-       process.exit(1);
+    let authRequest = sendRequest(constant.authPath, {});
+    if (!authRequest) {
+      console.error("Reached max fail attempts.")
+      process.exit(1)
     }
+
+    let authorizationToken = authRequest.getResponseHeader(constant.badsecTokenHeader);
+    let digestSha256 = crypto.createHash(`sha256`).update(authorizationToken + constant.userPath).digest(`hex`);
+    var headers = {};
+    headers[constant.checksumTokenHeader] = digestSha256;
+
+    let userRequest = sendRequest(constant.userPath, headers);
+    if (!userRequest) {
+      console.error("Reached max fail attempts.")
+      process.exit(1)
+    }
+    console.log(JSON.stringify(userRequest.responseText.split(`\n`)));
+    process.exit(0);
 }
 
-var app = express();
-app.listen(5000,function () {
-     main();
-});
+main();
